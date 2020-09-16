@@ -8,27 +8,22 @@ PROJECT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 BUCKET = {{ cookiecutter.s3_bucket }}
 PROFILE = {{ cookiecutter.aws_profile }}
 PROJECT_NAME = {{ cookiecutter.project_slug }}
-PYTHON_INTERPRETER = {{ cookiecutter.python_interpreter }}
 
-ifeq (,$(shell which conda))
+PYTHON_INTERPRETER = $(shell which python)
+OS_WINDOWS = "nt"
+OS_LINUX = "posix"
+
+
+# ifeq (,$(shell which conda))
 HAS_CONDA=False
-else
-HAS_CONDA=True
-endif
+# else
+# HAS_CONDA=True
+# endif
+
 
 #################################################################################
-# COMMANDS                                                                      #
+# UTILITIES                                                                     #
 #################################################################################
-
-## Install Python Dependencies
-requirements: test_environment
-	$(PYTHON_INTERPRETER) -m pip install -U pip setuptools wheel
-	$(PYTHON_INTERPRETER) -m pip install -r requirements.txt
-
-## Make Dataset
-data: requirements
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed
-
 ## Delete all compiled Python files
 clean:
 	find . -type f -name "*.py[co]" -delete
@@ -38,43 +33,44 @@ clean:
 lint:
 	flake8 src
 
-## Upload Data to S3
-sync_data_to_s3:
-ifeq (default,$(PROFILE))
-	aws s3 sync data/ s3://$(BUCKET)/data/
-else
-	aws s3 sync data/ s3://$(BUCKET)/data/ --profile $(PROFILE)
+
+#################################################################################
+# SETUP PYTHON ENVIRONEMENT                                                     #
+#################################################################################
+
+## Identify the operating system
+os_name:= $(shell python -c "import os; print('\"' + os.name + '\"')")
+
+## Set up python environment
+create_environment: os_name
+	@echo $(os_name)
+	@echo ">>> Installing virtualenv if not already installed"
+	python -m pip install -q virtualenv
+	virtualenv env
+ifeq ($(os_name),$(OS_WINDOWS))
+	@echo ">>> Runing python on a Windows environment."
+	@echo ">>> To activate environment please run : source env/Scripts/activate"
+	
+endif		
+ifeq ($(os_name),$(OS_LINUX))
+	@echo ">>> Runing python on a Linux environment."
+	@echo ">>> To activate environment please run : source env/bin/activate"
 endif
 
-## Download Data from S3
-sync_data_from_s3:
-ifeq (default,$(PROFILE))
-	aws s3 sync s3://$(BUCKET)/data/ data/
-else
-	aws s3 sync s3://$(BUCKET)/data/ data/ --profile $(PROFILE)
-endif
+## Install python dependencies for developement
+requirements_dev: test_environment
+	$(PYTHON_INTERPRETER) -m pip install -U pip setuptools wheel
+	$(PYTHON_INTERPRETER) -m pip install -r requirements_dev.txt
 
-## Set up python interpreter environment
-create_environment:
-ifeq (True,$(HAS_CONDA))
-		@echo ">>> Detected conda, creating conda environment."
-ifeq (3,$(findstring 3,$(PYTHON_INTERPRETER)))
-	conda create --name $(PROJECT_NAME) python=3
-else
-	conda create --name $(PROJECT_NAME) python=2.7
-endif
-		@echo ">>> New conda env created. Activate with:\nsource activate $(PROJECT_NAME)"
-else
-	$(PYTHON_INTERPRETER) -m pip install -q virtualenv virtualenvwrapper
-	@echo ">>> Installing virtualenvwrapper if not already installed.\nMake sure the following lines are in shell startup file\n\
-	export WORKON_HOME=$$HOME/.virtualenvs\nexport PROJECT_HOME=$$HOME/Devel\nsource /usr/local/bin/virtualenvwrapper.sh\n"
-	@bash -c "source `which virtualenvwrapper.sh`;mkvirtualenv $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER)"
-	@echo ">>> New virtualenv created. Activate with:\nworkon $(PROJECT_NAME)"
-endif
+## Install python dependencies for production
+requirements: test_environment
+	$(PYTHON_INTERPRETER) -m pip install -U pip setuptools wheel
+	$(PYTHON_INTERPRETER) -m pip install -r requirements.txt
+
 
 ## Test python environment is setup correctly
 test_environment:
-	$(PYTHON_INTERPRETER) test_environment.py
+	$(PYTHON_INTERPRETER) test_environment.py	
 
 #################################################################################
 # PROJECT RULES                                                                 #
